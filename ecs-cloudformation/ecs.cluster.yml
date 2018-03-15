@@ -1,0 +1,12 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ECS Cluster Stack
+
+Parameters:
+  ECSClusterName:
+    Type: String
+    Description: a ECS Cluster Name that you want(ex. rails/node).
+Resources:
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref 'ECSClusterName'

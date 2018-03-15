@@ -1,19 +1,23 @@
+---
 AWSTemplateFormatVersion: '2010-09-09'
 Description: ECS QuickStart template
 Parameters:
+  Env:
+    Type: String
+    Description: Select Env-mode(production/staging/test)
   ECSClusterName:
     Type: String
-    Description: a ECS Cluster Name that you want(ex. prd-rails, stg-node).
+    Description: a ECS Cluster Name that you want(ex. rails/node).
   TaskFamilyName:
     Type: String
     Description: a Task Definition Name to execute in your ECS service.
-  KeyName:
+  KeyPairName:
     Type: AWS::EC2::KeyPair::KeyName
     Description: Name of an existing EC2 KeyPair to enable SSH access to the ECS instances.
   VpcId:
     Type: AWS::EC2::VPC::Id
     Description: Select a default VPC ID.
-  SubnetID:
+  Subnets:
     Type: List<AWS::EC2::Subnet::Id>
     Description: Select multi AZ Subnet IDs in your selected VPC.
   DesiredCapacity:
@@ -34,31 +38,32 @@ Parameters:
       c3.2xlarge, c3.4xlarge, c3.8xlarge, r3.large, r3.xlarge, r3.2xlarge, r3.4xlarge,
       r3.8xlarge, i2.xlarge, i2.2xlarge, i2.4xlarge, i2.8xlarge]
     ConstraintDescription: Please choose a valid instance type.
+# Newist check it out, see http://docs.aws.amazon.com/ja_jp/AmazonECS/latest/developerguide/ecs-optimized_AMI.html
 Mappings:
   AWSRegionToAMI:
     us-east-1:
-      AMIID: ami-1924770e
+      AMIID: ami-eca289fb
     us-east-2:
-      AMIID: ami-bd3e64d8
+      AMIID: ami-446f3521
     us-west-1:
-      AMIID: ami-7f004b1f
+      AMIID: ami-9fadf8ff
     us-west-2:
-      AMIID: ami-56ed4936
+      AMIID: ami-7abc111a
     eu-west-1:
-      AMIID: ami-c8337dbb
+      AMIID: ami-a1491ad2
     eu-central-1:
-      AMIID: ami-dd12ebb2
+      AMIID: ami-54f5303b
     ap-northeast-1:
-      AMIID: ami-c8b016a9
+      AMIID: ami-9cd57ffd
     ap-southeast-1:
-      AMIID: ami-6d22840e
+      AMIID: ami-a900a3ca
     ap-southeast-2:
-      AMIID: ami-73407d10
+      AMIID: ami-5781be34
 Resources:
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
-      ClusterName: !Ref 'ECSClusterName'
+      ClusterName: !Join ['-', [!Ref 'Env', !Ref 'ECSClusterName']]
   CloudwatchLogsGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -71,8 +76,8 @@ Resources:
       - Name: nginx
         Cpu: '10'
         Essential: 'true'
-        Image: httpd:2.4
-        Memory: '300'
+        Image: nginx:latest
+        Memory: '256'
         LogConfiguration:
           LogDriver: awslogs
           Options:
@@ -80,10 +85,12 @@ Resources:
             awslogs-region: !Ref 'AWS::Region'
             awslogs-stream-prefix: ecs-demo-app
         MountPoints:
-        - ContainerPath: /usr/local/apache2/htdocs
+        - ContainerPath: /usr/share/nginx/html
           SourceVolume: my-vol
         PortMappings:
         - ContainerPort: 80
+          HostPort: 80
+          Protocol: tcp
       - Name: busybox
         Cpu: 10
         Command: ['/bin/sh -c "while true; do echo ''<html> <head> <title>Amazon ECS
@@ -91,7 +98,7 @@ Resources:
             </style> </head><body> <div style=color:white;text-align:center> <h1>Amazon
             ECS Sample App</h1> <h2>Congratulations!</h2> <p>Your application is now
             running on a container in Amazon ECS.</p>'' > top; /bin/date > date ;
-            echo ''</div></body></html>'' > bottom; cat top date bottom > /usr/local/apache2/htdocs/index.html
+            echo ''</div></body></html>'' > bottom; cat top date bottom > /usr/share/nginx/html/index.html
             ; sleep 1; done"']
         EntryPoint: [sh, -c]
         Essential: false
@@ -108,52 +115,93 @@ Resources:
       Family: !Ref 'TaskFamilyName'
       Volumes:
       - Name: my-vol
-  ECSALB:
+  ALBSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow general access to ALB
+      VpcId: !Ref 'VpcId'
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '443'
+        ToPort: '443'
+        CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ['sg', 'ECS', 'ALB', !Ref 'Env']]
+      VpcId: !Ref 'VpcId'
+  ECSSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow general access to App Container (from ALB)
+      VpcId: !Ref 'VpcId'
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        SourceSecurityGroupId: !Ref 'ALBSG'
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ['sg', 'ECS', 'App', !Ref 'Env']]
+      VpcId: !Ref 'VpcId'
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Name: !Join ['-', ['elb', 'ECS', 'Routing', !Ref 'Env']]
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref 'VpcId'
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ['elb', 'ECS', 'Routing', !Ref 'Env']]
+  ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: ECSALB
+      Name: !Join ['-', ['elb', 'ECS', 'ALB', !Ref 'Env']]
       Scheme: internet-facing
       LoadBalancerAttributes:
       - Key: idle_timeout.timeout_seconds
         Value: '30'
-      Subnets: !Ref 'SubnetID'
+      SecurityGroups:
+      - !Ref 'ALBSG'
+      Subnets: !Ref 'Subnets'
   ALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       DefaultActions:
       - Type: forward
-        TargetGroupArn: !Ref 'ECSTargetGroup'
-      LoadBalancerArn: !Ref 'ECSALB'
+        TargetGroupArn: !Ref 'ALBTargetGroup'
+      LoadBalancerArn: !Ref 'ALB'
       Port: '80'
       Protocol: HTTP
-  ECSALBListenerRule:
+  ALBListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
       Actions:
       - Type: forward
-        TargetGroupArn: !Ref 'ECSTargetGroup'
+        TargetGroupArn: !Ref 'ALBTargetGroup'
       Conditions:
       - Field: path-pattern
         Values: [/]
       ListenerArn: !Ref 'ALBListener'
       Priority: 1
-  ECSTargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      HealthCheckIntervalSeconds: 10
-      HealthCheckPath: /
-      HealthCheckProtocol: HTTP
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 2
-      Name: ECSTargetGroup
-      Port: 80
-      Protocol: HTTP
-      UnhealthyThresholdCount: 2
-      VpcId: !Ref 'VpcId'
   ECSAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
-      VPCZoneIdentifier: !Ref 'VpcId'
+      VPCZoneIdentifier: !Ref 'Subnets'
       LaunchConfigurationName: !Ref 'ContainerInstances'
       MinSize: '1'
       MaxSize: !Ref 'MaxSize'
@@ -201,8 +249,11 @@ Resources:
     Properties:
       ImageId: !FindInMap [AWSRegionToAMI, !Ref 'AWS::Region', AMIID]
       InstanceType: !Ref 'InstanceType'
+      AssociatePublicIpAddress: 'true'
       IamInstanceProfile: !Ref 'EC2InstanceProfile'
-      KeyName: !Ref 'KeyName'
+      KeyName: !Ref 'KeyPairName'
+      SecurityGroups:
+      - !Ref 'ECSSG'
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash -xe
@@ -218,7 +269,7 @@ Resources:
       LoadBalancers:
       - ContainerName: nginx
         ContainerPort: '80'
-        TargetGroupArn: !Ref 'ECSTargetGroup'
+        TargetGroupArn: !Ref 'ALBTargetGroup'
       Role: !Ref 'ECSServiceRole'
       TaskDefinition: !Ref 'taskdefinition'
   ECSServiceRole:
@@ -322,8 +373,10 @@ Resources:
       Roles: [!Ref 'EC2Role']
 Outputs:
   ecsservice:
-    Value: !Ref 'service'
+    Value: !GetAtt [service, Name]
   ecscluster:
     Value: !Ref 'ECSCluster'
   taskdef:
     Value: !Ref 'taskdefinition'
+  CheckURL:
+    Value: !GetAtt [ALB, DNSName]

@@ -1,0 +1,38 @@
+Mappings:
+ VpcCidrs:
+  "eu-central-1":
+   vpc: "10.0.0.0/16"
+   pubsubnet1: "10.0.0.0/24"
+   pubsubnet2: "10.0.1.0/24"
+  "sa-east-1":
+   vpc: "10.0.0.0/16"
+   pubsubnet1: "10.0.0.0/24"
+   pubsubnet2: "10.0.1.0/24"
+  "ap-northeast-1":
+   vpc: "10.0.0.0/16"
+   pubsubnet1: "10.0.0.0/24"
+   pubsubnet2: "10.0.1.0/24"
+  "eu-west-1":
+   vpc: "10.0.0.0/16"
+   pubsubnet1: "10.0.0.0/24"
+   pubsubnet2: "10.0.1.0/24"
+  "us-east-1":
+   vpc: "10.0.0.0/16"
+   pubsubnet1: "10.0.0.0/24"
+   pubsubnet2: "10.0.1.0/24"
+  "us-west-1":
+   vpc: "10.0.0.0/16"
+   pubsubnet1: "10.0.0.0/24"
+   pubsubnet2: "10.0.1.0/24"
+  "us-west-2":
+   vpc: "10.0.0.0/16"
+   pubsubnet1: "10.0.0.0/24"
+   pubsubnet2: "10.0.1.0/24"
+  "ap-southeast-2":
+   vpc: "10.0.0.0/16"
+   pubsubnet1: "10.0.0.0/24"
+   pubsubnet2: "10.0.1.0/24"
+  "ap-southeast-1":
+   vpc: "10.0.0.0/16"
+   pubsubnet1: "10.0.0.0/24"
+   pubsubnet2: "10.0.1.0/24"
